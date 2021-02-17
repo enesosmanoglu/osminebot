@@ -3,5 +3,29 @@
     "host": "huzunlumumya.mcpro.io",
     "port": 25565,
     "username": "osmanbot",
-    "password": ""
+    "password": "",
+    "auto_sleep": true,
+    "auto_start_fishing_on_login": true,
+    "fishing_rod_display_name": "Tuttur babağ",
+    "ignoreEntities": [
+        "Raw Cod",
+        "Raw Salmon",
+        "Pufferfish",
+        "Tropical Fish",
+        "Rotten Flesh",
+        "String",
+        "Stick",
+        "Bone",
+        "Name Tag",
+        "Potion",
+        "Saddle",
+        "Nautilus Shell",
+        "Leather"
+    ],
+    "dropEntities": [
+        "Lily Pad",
+        "Tripwire Hook",
+        "Bowl",
+        "Leather Boots"
+    ]
 }

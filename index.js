@@ -59,6 +59,7 @@ bot.once('spawn', () => {
     ];
     const shouldSleepLoop = async () => {
         if (!bot.time.isDay && !bot.isSleeping) {
+            bot.chat("I'll sleep for you :)")
             const bedBlocks = bot.findBlocks({
                 matching: bedTypes.map((bedName) => mcData.blocksByName[bedName].id),
                 count: 10,
@@ -80,8 +81,8 @@ bot.once('spawn', () => {
 
             const handleGoToBed = async () => {
                 try {
-                    await bot.sleep(bedBlock);
                     await stopFishing(true);
+                    await bot.sleep(bedBlock);
                     bot.on('wake', afterAwakeHandler);
                 } catch (error) {
                     console.log(error.message);
@@ -96,9 +97,10 @@ bot.once('spawn', () => {
         }
     };
 
-    setInterval(() => {
-        shouldSleepLoop();
-    }, 5000);
+    if (config.auto_sleep)
+        setInterval(() => {
+            shouldSleepLoop();
+        }, 5000);
 
     /**
      * LOOPS END
@@ -120,20 +122,21 @@ bot.once('spawn', () => {
         bot.removeListener('goal_reached', reachedHandler);
     };
 
-    const ignoreEntities = [
-        "Raw Cod", "Raw Salmon", "Pufferfish", "Tropical Fish",
-    ]
-    const dropEntities = [
-        "Lily Pad", "Rotten Flesh", "Tripwire Hook", "Bowl",
-    ]
+
     const onCollectHandler = (player, entity) => {
         if (entity.kind === 'Drops' && player === bot.entity) {
             if (botState.isFishing === false) {
                 const { itemId } = entity.metadata[entity.metadata.length - 1];
-                if (dropEntities.some(e => e == mcData.items[itemId].displayName)) {
-                    bot.toss(itemId)
+                console.log(`I caught a ${mcData.items[itemId].displayName}!`);
+                if (config.dropEntities.some(e => e == mcData.items[itemId].displayName)) {
+                    bot.tossStack(mcData.items[itemId], err => {
+                        if (err)
+                            console.log('Error while dropping entities:', err)
+                        else
+                            console.log('Dropped entity successfully!')
+                    })
                 } else {
-                    if (!ignoreEntities.some(e => e == mcData.items[itemId].displayName))
+                    if (!config.ignoreEntities.some(e => e == mcData.items[itemId].displayName))
                         bot.chat(`I caught a ${mcData.items[itemId].displayName}!`);
                 }
                 bot.removeListener('playerCollect', onCollectHandler);
@@ -188,6 +191,7 @@ bot.once('spawn', () => {
      */
 
     const startFishing = async () => {
+        console.log('startFishing: isFishing?', botState.isFishing)
         if (botState.isFishing === false) {
             const { waterBlock, groundBlock } = await getFishingSpot();
 
@@ -195,14 +199,54 @@ bot.once('spawn', () => {
 
             const sf_afterReach = async () => {
                 bot.removeListener('goal_reached', sf_afterReach);
+                logInventory()
+
+                if (bot.inventory.items().length == 36) {
+                    console.log('INVENTORY IS FULL - STORING ITEMS')
+                    botState.shouldFish = true;
+                    botState.isFishing = false;
+                    storeCatches()
+                    return
+                }
 
                 await bot.lookAt(waterBlock.position.offset(0, 2, 2), true);
 
-                try {
-                    await bot.equip(mcData.itemsByName.fishing_rod.id, 'hand');
-                } catch (error) {
-                    bot.chat("I don't have a fishing rod!");
-                    return;
+                let fishing_rod
+                if (config.fishing_rod_display_name) {
+                    console.log('Searching special fishing rod named', config.fishing_rod_display_name)
+                    fishing_rod = bot.inventory.items().find(i => {
+                        let itemData = JSON.parse(JSON.stringify(i))
+                        try {
+                            return (JSON.parse(itemData.nbt.value.display.value.Name.value).text == config.fishing_rod_display_name) && i.type == mcData.itemsByName.fishing_rod.id
+                        } catch (error) {
+                            return false
+                        }
+                    })
+                    if (!fishing_rod) {
+                        console.log("Couldn't found!")
+                        console.log("Searching any fishing rod.")
+                        try {
+                            await bot.equip(mcData.itemsByName.fishing_rod.id, 'hand');
+                            console.log('Found!')
+                        } catch (error) {
+                            console.log("Couldn't found any fishing rod!")
+                            bot.chat("I don't have a fishing rod!");
+                            return;
+                        }
+                    } else {
+                        console.log('Found!')
+                        await bot.equip(fishing_rod, 'hand');
+                    }
+                } else {
+                    console.log("Searching any fishing rod.")
+                    try {
+                        await bot.equip(mcData.itemsByName.fishing_rod.id, 'hand');
+                        console.log('Found!')
+                    } catch (error) {
+                        console.log("Couldn't found any fishing rod!")
+                        bot.chat("I don't have a fishing rod!");
+                        return;
+                    }
                 }
 
                 bot.on('playerCollect', onCollectHandler);
@@ -213,16 +257,18 @@ bot.once('spawn', () => {
                     await bot.fish();
                     botState.isFishing = false;
                 } catch (error) {
-                    console.log('Fishing cancelled because of ' + error);
+                    console.log(error.message);
                     botState.isFishing = false;
-                    setTimeout(() => { startFishing() }, 5000);
+                    bot.chat('Fishing cancelled')
                 }
             };
 
             bot.on('goal_reached', sf_afterReach);
         }
     };
-    setTimeout(() => { startFishing() }, 3000);
+
+    if (config.auto_start_fishing_on_login)
+        setTimeout(() => { startFishing() }, 1000);
 
     const stopFishing = async (shouldContinue = false) => {
         if (botState.isFishing === true) {
@@ -237,25 +283,57 @@ bot.once('spawn', () => {
     const storeCatches = async () => {
         const listOfTransferrableItems = [];
         for (const item of bot.inventory.items()) {
+            listOfTransferrableItems.push(item);
+            continue
             if (item.type !== 684) {
                 listOfTransferrableItems.push(item);
+            } else if (config.fishing_rod_display_name) {
+                try {
+                    let itemData = JSON.parse(JSON.stringify(item))
+                    console.log(JSON.parse(itemData.nbt.value.display.value.Name.value).text)
+                    if (JSON.parse(itemData.nbt.value.display.value.Name.value).text != config.fishing_rod_display_name)
+                        listOfTransferrableItems.push(item);
+                } catch (error) {
+                    listOfTransferrableItems.push(item);
+                }
             }
         }
+        console.log(JSON.stringify(listOfTransferrableItems))
 
         if (listOfTransferrableItems.length <= 0) {
             bot.chat("I don't have anything to store!");
+            if (!botState.isFishing && botState.shouldFish) {
+                console.log('Fishing again!')
+                startFishing();
+            }
             return;
         }
 
-        await stopFishing();
+        await stopFishing(true);
 
         const chestToOpen = bot.findBlock({
             matching: mcData.blocksByName['chest'].id,
+            useExtraInfo: (block) => {
+                try {
+                    console.log(" ")
+                    console.log("--------------------------------")
+                    console.log(JSON.stringify(block))
+                    console.log("--------------------------------")
+                    console.log(" ")
+                    bot.chat(block.items().length)
+                    return block.items().length != 54
+                } catch (error) {
+                    return true
+                }
+            },
             maxDistance: 32,
         });
 
         if (!chestToOpen) {
             bot.chat('No chests nearby!');
+            if (botState.shouldFish) {
+                startFishing();
+            }
             return;
         }
 
@@ -265,25 +343,33 @@ bot.once('spawn', () => {
             bot.removeListener('goal_reached', afterReach);
 
             const chest = await bot.openChest(chestToOpen);
-
             let totalItemsStored = 0;
 
             for (let item of listOfTransferrableItems) {
-                if (item.type !== 684) {
-                    try {
-                        totalItemsStored += item.count;
-                        await chest.deposit(item.type, null, item.count);
-                    } catch (error) {
-                        console.log(error.message);
+                try {
+                    await chest.deposit(item.type, item.metadata, item.count);
+                    totalItemsStored += item.count;
+                } catch (error) {
+                    console.log(error.message);
+                    if (error.message == "destination full") {
+                        bot.chat('I fulled a chest XD')
+                        break
                     }
                 }
             }
-
-            bot.chat(`Stored ${totalItemsStored} item(s)!`);
-
+            await chest.withdraw(684, null, 1)
             await chest.close();
+            bot.chat(`Stored ${totalItemsStored} item(s)!`);
+            console.log("Stored", totalItemsStored, "/", listOfTransferrableItems.length)
+
+            /* 
+            if (totalItemsStored != listOfTransferrableItems.length) {
+                storeCatches()
+                return
+            } */
 
             if (botState.shouldFish) {
+                console.log('Fishing again!')
                 startFishing();
             }
         };
@@ -411,3 +497,33 @@ bot.once('spawn', () => {
         console.log(`${r.path.length} moves. (${r.time.toFixed(2)} ms, (${nodesPerTick} n/t)). ${r.status}`);
     });
 });
+
+
+function logInventory() {
+    let data = []
+    bot.inventory.items().forEach(item => {
+        let name
+        try {
+            name = JSON.parse(itemData.nbt.value.display.value.Name.value).text
+        } catch (error) {
+            name = item.displayName
+        }
+        for (let i = 0; i < item.count; i++) {
+            data.push(name)
+        }
+    })
+
+    var counts = {};
+    data.forEach(function (x) { counts[x] = (counts[x] || 0) + 1; });
+
+    console.log('===========================')
+    console.log('         INVENTORY         ')
+    console.log('       SLOTS:', bot.inventory.items().length, "/ 36      ")
+    console.log('===========================')
+    console.log('           ITEMS           ')
+    for (let i = 0; i < Object.entries(counts).length; i++) {
+        const item = Object.entries(counts)[i];
+        console.log("  •", item[1], "x", item[0])
+    }
+    console.log('===========================')
+}
