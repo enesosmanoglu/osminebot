@@ -6,6 +6,7 @@
     "password": "",
     "auto_sleep": true,
     "auto_start_fishing_on_login": true,
+    "water_offset": [0, 2, 2],
     "fishing_rod_display_name": "Tuttur babağ",
     "ignoreEntities": [
         "Raw Cod",
@@ -26,6 +27,7 @@
         "Lily Pad",
         "Tripwire Hook",
         "Bowl",
-        "Leather Boots"
+        "Leather Boots",
+        "Ink Sac"
     ]
 }
