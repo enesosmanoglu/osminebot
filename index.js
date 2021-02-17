@@ -491,6 +491,7 @@ function bindEvents(bot = mineflayer.createBot(botOptions)) {
                                     }
                                     totalItemsStored += item.count;
                                     totalSlotStored += 1;
+                                    listOfTransferrableItems.splice(listOfTransferrableItems.indexOf(item), 1)
                                 } catch (error) {
                                     console.log(error.message)
                                     if (error.message.includes('Server rejected transaction'))
@@ -595,10 +596,7 @@ function bindEvents(bot = mineflayer.createBot(botOptions)) {
 
                 switch (keyword) {
                     case 'restart':
-                        bot.quit("Restart")
-                        setTimeout(() => {
-                            relog()
-                        }, 30000);
+                        relog()
                         break;
                     case 'debug':
                         botState.debug = !botState.debug
@@ -718,6 +716,7 @@ function bindEvents(bot = mineflayer.createBot(botOptions)) {
 }
 
 function relog() {
+    bot.quit("Restart")
     console.log("Attempting to reconnect...");
     bot = mineflayer.createBot(botOptions);
     bindEvents(bot);
